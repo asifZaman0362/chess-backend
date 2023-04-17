@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
 use crate::chessclient::ChessClient;
+use crate::chessclient::TakePiece;
 
 fn max(x: u8, y: u8) -> u8 {
     match x > y {
@@ -71,6 +72,9 @@ impl Game {
         if self.boards[whose][at].is_some() {
             self.discarded.push(self.boards[whose][at].unwrap().clone());
             self.boards[whose][at] = None;
+            for player in self.players.iter() {
+                player.do_send(TakePiece { at });
+            }
         }
     }
 
@@ -133,11 +137,12 @@ pub struct MoveDetails {
 }
 
 #[derive(Serialize)]
-enum MoveError {
+pub enum MoveError {
     PieceMismatch,
     InvalidPosition,
     SpaceOccupied,
     InvalidTurn,
+    NotInGame,
 }
 
 #[derive(Message)]

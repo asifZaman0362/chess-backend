@@ -1,14 +1,16 @@
 use std::time::{Duration, Instant};
 
-use crate::game::Game;
+use crate::game::{Game, MakeMove, MoveError};
 use crate::message::{
     ClientMessage::{self, *},
     Login, Logout,
 };
 use crate::server::Server;
-use actix::{Actor, ActorContext, Addr, AsyncContext, StreamHandler};
+use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, StreamHandler};
 use actix_web_actors::ws::{self, WebsocketContext};
 use log::{info, warn};
+use serde::Serialize;
+use serde_json::to_string;
 use ws::Message::{Close, Ping, Text};
 
 static HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -32,6 +34,7 @@ impl ChessClient {
     }
 
     fn handle_message(&mut self, message: &str, ctx: &mut WebsocketContext<Self>) {
+        let addr = ctx.address();
         if let Ok(message) = serde_json::from_str::<ClientMessage>(message) {
             match message {
                 Login(username) => self.server.do_send(Login {
@@ -41,7 +44,16 @@ impl ChessClient {
                 Enqueue => {}
                 Dequeue => {}
                 LeaveGame => {}
-                MakeMove(move_details) => {}
+                MakeMove(move_details) => match &self.game {
+                    Some(game) => game.do_send(MakeMove {
+                        move_details,
+                        player: addr,
+                    }),
+                    None => ctx.text(
+                        to_string(&Err::<(), MoveError>(crate::game::MoveError::NotInGame))
+                            .unwrap(),
+                    ),
+                },
                 PlayAgain => {}
             }
         }
@@ -86,5 +98,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChessClient {
                 warn!("Received unrecognised message!");
             }
         }
+    }
+}
+
+#[derive(Message, Serialize)]
+#[rtype(result = "()")]
+pub struct TakePiece {
+    pub at: usize,
+}
+
+impl Handler<TakePiece> for ChessClient {
+    type Result = ();
+    fn handle(&mut self, msg: TakePiece, ctx: &mut Self::Context) -> Self::Result {
+        ctx.text(to_string(&msg).unwrap());
     }
 }
