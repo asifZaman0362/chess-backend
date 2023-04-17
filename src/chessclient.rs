@@ -6,7 +6,7 @@ use crate::message::{
     Login, Logout,
 };
 use crate::server::Server;
-use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, StreamHandler};
+use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, Running, StreamHandler};
 use actix_web_actors::ws::{self, WebsocketContext};
 use log::{info, warn};
 use serde::Serialize;
@@ -67,6 +67,9 @@ impl ChessClient {
                     info!("Client {username} timeout! Disconnecting!");
                     act.server.do_send(Logout { username });
                     ctx.stop();
+                } else {
+                    info!("Client timeout! Disconnecting!");
+                    ctx.stop();
                 }
             }
         });
@@ -75,13 +78,21 @@ impl ChessClient {
 
 impl Actor for ChessClient {
     type Context = WebsocketContext<Self>;
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChessClient {
     fn started(&mut self, ctx: &mut Self::Context) {
         self.hb(ctx);
     }
+    fn stopping(&mut self, _: &mut Self::Context) -> Running {
+        match &self.username {
+            Some(username) => self.server.do_send(Logout {
+                username: username.to_string(),
+            }),
+            None => {}
+        };
+        Running::Stop
+    }
+}
 
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChessClient {
     fn handle(&mut self, item: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match item {
             Ok(Text(text)) => {
