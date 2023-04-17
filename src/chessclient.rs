@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use crate::game::Game;
 use crate::message::{
     ClientMessage::{self, *},
     Login, Logout,
@@ -17,6 +18,7 @@ pub struct ChessClient {
     username: Option<String>,
     heartbeat: Instant,
     server: Addr<Server>,
+    game: Option<Addr<Game>>,
 }
 
 impl ChessClient {
@@ -25,6 +27,7 @@ impl ChessClient {
             username: None,
             heartbeat: Instant::now(),
             server,
+            game: None,
         }
     }
 
@@ -38,6 +41,7 @@ impl ChessClient {
                 Enqueue => {}
                 Dequeue => {}
                 LeaveGame => {}
+                MakeMove(move_details) => {}
                 PlayAgain => {}
             }
         }

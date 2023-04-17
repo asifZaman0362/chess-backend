@@ -7,6 +7,7 @@ use actix_web::{
 use actix_web_actors::ws;
 
 mod chessclient;
+mod game;
 mod message;
 mod server;
 

@@ -1,3 +1,4 @@
+use crate::game::MoveDetails;
 use actix::{Addr, Message};
 use serde::Deserialize;
 
@@ -10,6 +11,7 @@ pub enum ClientMessage {
     Dequeue,
     LeaveGame,
     PlayAgain,
+    MakeMove(MoveDetails),
 }
 
 #[derive(Message)]
