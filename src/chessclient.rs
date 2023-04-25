@@ -119,7 +119,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChessClient {
     }
 }
 
-struct TcpClient {
+pub struct TcpClient {
     username: Option<String>,
     heartbeat: Instant,
     server: Addr<Server>,
@@ -137,6 +137,18 @@ impl StreamHandler<Result<ClientMessage, FrameError>> for TcpClient {
 }
 
 impl TcpClient {
+    pub fn new(
+        srv: Addr<Server>,
+        writer: FramedWrite<OutgoingMessage, WriteHalf<TcpStream>, FrameCodec>,
+    ) -> Self {
+        TcpClient {
+            username: None,
+            heartbeat: Instant::now(),
+            server: srv,
+            game: None,
+            framed: writer,
+        }
+    }
     fn hb(&self, ctx: &mut <Self as Actor>::Context) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             if Instant::now().duration_since(act.heartbeat) > HEARTBEAT_TIMEOUT {
@@ -192,7 +204,7 @@ impl Actor for TcpClient {
     }
 }
 
-impl WriteHandler<std::io::Error> for TcpClient {}
+impl WriteHandler<FrameError> for TcpClient {}
 
 #[derive(ActixMessage)]
 #[rtype(result = "()")]

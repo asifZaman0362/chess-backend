@@ -15,7 +15,7 @@ impl From<std::io::Error> for FrameError {
     }
 }
 
-pub struct FrameCodec {}
+pub struct FrameCodec;
 
 impl Encoder<OutgoingMessage> for FrameCodec {
     type Error = FrameError;
