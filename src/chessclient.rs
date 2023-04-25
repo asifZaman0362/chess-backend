@@ -1,16 +1,23 @@
 use std::time::{Duration, Instant};
 
+use crate::codec::{FrameCodec, FrameError};
 use crate::game::{Game, MakeMove, MoveError};
+use crate::message::OutgoingMessage;
 use crate::message::{
     ClientMessage::{self, *},
     Login, Logout,
 };
 use crate::server::Server;
-use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, Running, StreamHandler};
+use actix::io::{FramedWrite, WriteHandler};
+use actix::{
+    Actor, ActorContext, Addr, AsyncContext, Context, Handler, Message as ActixMessage, Running,
+    StreamHandler,
+};
 use actix_web_actors::ws::{self, WebsocketContext};
 use log::{info, warn};
-use serde::Serialize;
 use serde_json::to_string;
+use tokio::io::WriteHalf;
+use tokio::net::TcpStream;
 use ws::Message::{Close, Ping, Text};
 
 static HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -34,12 +41,12 @@ impl ChessClient {
     }
 
     fn handle_message(&mut self, message: &str, ctx: &mut WebsocketContext<Self>) {
-        let addr = ctx.address();
+        let addr = ctx.address().recipient();
         if let Ok(message) = serde_json::from_str::<ClientMessage>(message) {
             match message {
                 Login(username) => self.server.do_send(Login {
                     username,
-                    client: ctx.address(),
+                    client: addr,
                 }),
                 Enqueue => {}
                 Dequeue => {}
@@ -112,15 +119,89 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChessClient {
     }
 }
 
-#[derive(Message, Serialize)]
-#[rtype(result = "()")]
-pub struct TakePiece {
-    pub at: usize,
+struct TcpClient {
+    username: Option<String>,
+    heartbeat: Instant,
+    server: Addr<Server>,
+    game: Option<Addr<Game>>,
+    framed: FramedWrite<OutgoingMessage, WriteHalf<TcpStream>, FrameCodec>,
 }
 
-impl Handler<TakePiece> for ChessClient {
+impl StreamHandler<Result<ClientMessage, FrameError>> for TcpClient {
+    fn handle(&mut self, item: Result<ClientMessage, FrameError>, ctx: &mut Self::Context) {
+        match item {
+            Ok(message) => self.handle_message(message, ctx),
+            Err(_) => ctx.stop(),
+        }
+    }
+}
+
+impl TcpClient {
+    fn hb(&self, ctx: &mut <Self as Actor>::Context) {
+        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
+            if Instant::now().duration_since(act.heartbeat) > HEARTBEAT_TIMEOUT {
+                if act.username.is_some() {
+                    let username = act.username.clone().unwrap();
+                    info!("Client {username} timeout! Disconnecting!");
+                    act.server.do_send(Logout { username });
+                    ctx.stop();
+                } else {
+                    info!("Client timeout! Disconnecting!");
+                    ctx.stop();
+                }
+            }
+        });
+    }
+
+    fn handle_message(&mut self, message: ClientMessage, ctx: &mut <Self as Actor>::Context) {
+        let addr = ctx.address().recipient();
+        match message {
+            Login(username) => self.server.do_send(Login {
+                username,
+                client: addr,
+            }),
+            Enqueue => {}
+            Dequeue => {}
+            LeaveGame => {}
+            MakeMove(move_details) => match &self.game {
+                Some(game) => game.do_send(MakeMove {
+                    move_details,
+                    player: addr,
+                }),
+                None => self.framed.write(OutgoingMessage::Result(Err(
+                    crate::game::MoveError::NotInGame,
+                ))),
+            },
+            PlayAgain => {}
+        }
+    }
+}
+
+impl Actor for TcpClient {
+    type Context = Context<Self>;
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.hb(ctx);
+    }
+}
+
+impl WriteHandler<std::io::Error> for TcpClient {}
+
+#[derive(ActixMessage)]
+#[rtype(result = "()")]
+pub struct Message {
+    pub inner: OutgoingMessage,
+}
+
+impl Handler<Message> for ChessClient {
     type Result = ();
-    fn handle(&mut self, msg: TakePiece, ctx: &mut Self::Context) -> Self::Result {
-        ctx.text(to_string(&msg).unwrap());
+    fn handle(&mut self, msg: Message, ctx: &mut Self::Context) -> Self::Result {
+        ctx.text(to_string(&msg.inner).unwrap());
+    }
+}
+
+impl Handler<Message> for TcpClient {
+    type Result = ();
+    fn handle(&mut self, msg: Message, _ctx: &mut Self::Context) -> Self::Result {
+        self.framed.write(msg.inner);
     }
 }

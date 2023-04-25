@@ -1,10 +1,11 @@
-use crate::game::MoveDetails;
-use actix::{Addr, Message};
-use serde::Deserialize;
+use crate::{
+    chessclient::Message,
+    game::{ChessPiece, MoveDetails, MoveError, Pos},
+};
+use actix::{Message as ActixMessage, Recipient};
+use serde::{Deserialize, Serialize};
 
-use crate::chessclient::ChessClient;
-
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub enum ClientMessage {
     Login(String),
     Enqueue,
@@ -14,14 +15,23 @@ pub enum ClientMessage {
     MakeMove(MoveDetails),
 }
 
-#[derive(Message)]
+#[derive(Serialize)]
+pub enum OutgoingMessage {
+    MovePiece { from: usize, to: usize },
+    RemovePiece { at: usize },
+    Check { checker: usize },
+    Checkmate { winner: usize },
+    Result(Result<(), MoveError>),
+}
+
+#[derive(ActixMessage)]
 #[rtype(result = "Result<(), ()>")]
 pub struct Login {
     pub username: String,
-    pub client: Addr<ChessClient>,
+    pub client: Recipient<Message>,
 }
 
-#[derive(Message)]
+#[derive(ActixMessage)]
 #[rtype(result = "()")]
 pub struct Logout {
     pub username: String,

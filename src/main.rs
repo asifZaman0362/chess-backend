@@ -10,6 +10,7 @@ use actix_web_actors::ws;
 use env_logger;
 
 mod chessclient;
+mod codec;
 mod game;
 mod message;
 mod server;

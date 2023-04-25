@@ -1,13 +1,13 @@
-use actix::{Actor, Addr, Context, Handler, Message};
+use actix::{Actor, Context, Handler, Message as ActixMessage, Recipient};
 use std::collections::HashMap;
 
 use crate::{
-    chessclient::ChessClient,
+    chessclient::Message,
     message::{Login, Logout},
 };
 
 pub struct Server {
-    users: HashMap<String, Addr<ChessClient>>,
+    users: HashMap<String, Recipient<Message>>,
 }
 
 impl Server {
@@ -41,7 +41,7 @@ impl Handler<Logout> for Server {
     }
 }
 
-#[derive(Message)]
+#[derive(ActixMessage)]
 #[rtype(result = "Vec<String>")]
 pub struct GetPlayers {}
 

@@ -1,9 +1,8 @@
-use actix::{Actor, Addr, Context, Handler, Message};
+use actix::{Actor, Context, Handler, Message as ActixMessage, Recipient};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
-use crate::chessclient::ChessClient;
-use crate::chessclient::TakePiece;
+use crate::{chessclient::Message, message::OutgoingMessage};
 
 fn max(x: u8, y: u8) -> u8 {
     match x > y {
@@ -23,7 +22,7 @@ fn min(x: u8, y: u8) -> u8 {
 // associated with a server
 // cannot exist independantly
 pub struct Game {
-    players: [Addr<ChessClient>; 2],
+    players: [Recipient<Message>; 2],
     turn: usize,
     discarded: Vec<ChessPiece>,
     boards: [[Option<ChessPiece>; 64]; 2],
@@ -73,10 +72,30 @@ impl Game {
             self.discarded.push(self.boards[whose][at].unwrap().clone());
             self.boards[whose][at] = None;
             for player in self.players.iter() {
-                player.do_send(TakePiece { at });
+                let msg = Message {
+                    inner: OutgoingMessage::RemovePiece { at },
+                };
+                player.do_send(msg);
             }
         }
     }
+
+    fn move_piece(&mut self, whose: usize, from: Pos, to: Pos) {
+        let p_from = (from.y * 8 + from.x) as usize;
+        let p_to = (to.y * 8 + to.x) as usize;
+        let piece = self.boards[whose][p_from];
+        self.boards[whose][p_from] = None;
+        self.boards[whose][p_to] = piece;
+        self.players.clone().map(|p| {
+            let inner = OutgoingMessage::MovePiece {
+                from: p_from,
+                to: p_to,
+            };
+            p.do_send(Message { inner })
+        });
+    }
+
+    fn check_board(&mut self) {}
 
     fn make_move(&mut self, chess_piece: ChessPiece, from: Pos, to: Pos) -> Result<(), MoveError> {
         let from_projected_pos = (from.y * 8 + from.x) as usize;
@@ -89,6 +108,7 @@ impl Game {
                     } else {
                         if self.check_move_pattern(piece, from, to) {
                             self.take_piece_if_exists((self.turn + 1) % 2, to_projected_pos);
+                            self.move_piece(self.turn, from, to);
                             Ok(())
                         } else {
                             Err(MoveError::InvalidPosition)
@@ -107,7 +127,7 @@ impl Actor for Game {
     type Context = Context<Self>;
 }
 
-#[derive(Deserialize, PartialEq, PartialOrd, Clone, Copy)]
+#[derive(Deserialize, Serialize, PartialEq, PartialOrd, Clone, Copy)]
 pub enum PieceVariant {
     Bishop,
     King,
@@ -117,19 +137,19 @@ pub enum PieceVariant {
     Rook,
 }
 
-#[derive(Deserialize, PartialEq, PartialOrd, Clone, Copy)]
+#[derive(Deserialize, Serialize, PartialEq, PartialOrd, Clone, Copy)]
 pub enum ChessPiece {
     White(PieceVariant),
     Black(PieceVariant),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Clone, Copy)]
 pub struct Pos {
     x: u8,
     y: u8,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct MoveDetails {
     pub piece: ChessPiece,
     pub from: Pos,
@@ -145,11 +165,11 @@ pub enum MoveError {
     NotInGame,
 }
 
-#[derive(Message)]
+#[derive(ActixMessage)]
 #[rtype(result = "Result<(), String>")]
 pub struct MakeMove {
     pub move_details: MoveDetails,
-    pub player: Addr<ChessClient>,
+    pub player: Recipient<Message>,
 }
 
 impl Handler<MakeMove> for Game {
