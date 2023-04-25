@@ -1,4 +1,4 @@
-use actix::{Actor, Context, Handler, Message as ActixMessage, Recipient};
+use actix::{Actor, ActorContext, Context, Handler, Message as ActixMessage, Recipient};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
@@ -29,6 +29,38 @@ pub struct Game {
 }
 
 impl Game {
+    pub fn new(players: [Recipient<Message>; 2]) -> Self {
+        let turn = 0;
+        let discarded = vec![];
+        let mut boards = [[None; 64]; 2];
+        // set white pieces
+        boards[0][0] = Some(ChessPiece::White(PieceVariant::Rook));
+        boards[0][7] = Some(ChessPiece::White(PieceVariant::Rook));
+        boards[0][1] = Some(ChessPiece::White(PieceVariant::Knight));
+        boards[0][6] = Some(ChessPiece::White(PieceVariant::Knight));
+        boards[0][2] = Some(ChessPiece::White(PieceVariant::Bishop));
+        boards[0][5] = Some(ChessPiece::White(PieceVariant::Bishop));
+        boards[0][3] = Some(ChessPiece::White(PieceVariant::Queen));
+        boards[0][4] = Some(ChessPiece::White(PieceVariant::King));
+        boards[0][8..16].fill(Some(ChessPiece::White(PieceVariant::Pawn)));
+        // set black pieces
+        boards[1][56] = Some(ChessPiece::Black(PieceVariant::Rook));
+        boards[1][63] = Some(ChessPiece::Black(PieceVariant::Rook));
+        boards[1][57] = Some(ChessPiece::Black(PieceVariant::Knight));
+        boards[1][62] = Some(ChessPiece::Black(PieceVariant::Knight));
+        boards[1][58] = Some(ChessPiece::Black(PieceVariant::Bishop));
+        boards[1][61] = Some(ChessPiece::Black(PieceVariant::Bishop));
+        boards[1][59] = Some(ChessPiece::Black(PieceVariant::Queen));
+        boards[1][60] = Some(ChessPiece::Black(PieceVariant::King));
+        boards[1][48..56].fill(Some(ChessPiece::Black(PieceVariant::Pawn)));
+        Game {
+            players,
+            turn,
+            discarded,
+            boards,
+        }
+    }
+
     fn check_move_pattern(&self, piece: &ChessPiece, from: Pos, to: Pos) -> bool {
         let dx = max(from.x, to.x) - min(from.x, to.x);
         let dy = max(from.y, to.y) - min(from.y, to.y);
@@ -74,6 +106,7 @@ impl Game {
             for player in self.players.iter() {
                 let msg = Message {
                     inner: OutgoingMessage::RemovePiece { at },
+                    game: None,
                 };
                 player.do_send(msg);
             }
@@ -91,7 +124,7 @@ impl Game {
                 from: p_from,
                 to: p_to,
             };
-            p.do_send(Message { inner })
+            p.do_send(Message { inner, game: None })
         });
     }
 
@@ -191,6 +224,27 @@ impl Handler<MakeMove> for Game {
                 }
             }
             None => Err(to_string(&MoveError::InvalidTurn).unwrap()),
+        }
+    }
+}
+
+#[derive(ActixMessage)]
+#[rtype(result = "()")]
+pub struct ForfeitGame(pub Recipient<Message>);
+
+impl Handler<ForfeitGame> for Game {
+    type Result = ();
+    fn handle(&mut self, msg: ForfeitGame, ctx: &mut Self::Context) -> Self::Result {
+        if let Some(player) = self.players.iter().position(|p| *p == msg.0) {
+            self.players[player].do_send(Message {
+                inner: OutgoingMessage::LoseGame("Forfeit".to_owned()),
+                game: None,
+            });
+            self.players[(player + 1) % 2].do_send(Message {
+                inner: OutgoingMessage::WinGame("Forfeit".to_string()),
+                game: None,
+            });
+            ctx.stop();
         }
     }
 }

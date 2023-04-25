@@ -1,13 +1,13 @@
 use std::time::{Duration, Instant};
 
 use crate::codec::{FrameCodec, FrameError};
-use crate::game::{Game, MakeMove, MoveError};
+use crate::game::{ForfeitGame, Game, MakeMove, MoveError};
 use crate::message::OutgoingMessage;
 use crate::message::{
     ClientMessage::{self, *},
     Login, Logout,
 };
-use crate::server::Server;
+use crate::server::{CancelSearch, FindGame, Server};
 use actix::io::{FramedWrite, WriteHandler};
 use actix::{
     Actor, ActorContext, Addr, AsyncContext, Context, Handler, Message as ActixMessage, Running,
@@ -160,9 +160,17 @@ impl TcpClient {
                 username,
                 client: addr,
             }),
-            Enqueue => {}
-            Dequeue => {}
-            LeaveGame => {}
+            Enqueue => {
+                self.server.do_send(FindGame(addr));
+            }
+            Dequeue => {
+                self.server.do_send(CancelSearch(addr));
+            }
+            LeaveGame => {
+                if let Some(game) = &self.game {
+                    game.do_send(ForfeitGame(addr));
+                }
+            }
             MakeMove(move_details) => match &self.game {
                 Some(game) => game.do_send(MakeMove {
                     move_details,
@@ -190,11 +198,24 @@ impl WriteHandler<std::io::Error> for TcpClient {}
 #[rtype(result = "()")]
 pub struct Message {
     pub inner: OutgoingMessage,
+    pub game: Option<Addr<Game>>,
 }
 
 impl Handler<Message> for ChessClient {
     type Result = ();
     fn handle(&mut self, msg: Message, ctx: &mut Self::Context) -> Self::Result {
+        match msg.inner {
+            OutgoingMessage::GameStarted => {
+                self.game = msg.game;
+            }
+            OutgoingMessage::WinGame(_) => {
+                self.game = None;
+            }
+            OutgoingMessage::LoseGame(_) => {
+                self.game = None;
+            }
+            _ => (),
+        }
         ctx.text(to_string(&msg.inner).unwrap());
     }
 }
@@ -202,6 +223,9 @@ impl Handler<Message> for ChessClient {
 impl Handler<Message> for TcpClient {
     type Result = ();
     fn handle(&mut self, msg: Message, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(game) = msg.game {
+            self.game = Some(game);
+        }
         self.framed.write(msg.inner);
     }
 }

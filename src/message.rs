@@ -1,6 +1,6 @@
 use crate::{
     chessclient::Message,
-    game::{ChessPiece, MoveDetails, MoveError, Pos},
+    game::{MoveDetails, MoveError},
 };
 use actix::{Message as ActixMessage, Recipient};
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,9 @@ pub enum OutgoingMessage {
     Check { checker: usize },
     Checkmate { winner: usize },
     Result(Result<(), MoveError>),
+    GameStarted,
+    WinGame(String),
+    LoseGame(String),
 }
 
 #[derive(ActixMessage)]
