@@ -48,6 +48,7 @@ fn start_tcp_server(srv: Addr<Server>) {
         log::info!("Started tcp server at 127.0.0.1:9000");
         let listener = TcpListener::bind("127.0.0.1:9000").await.unwrap();
         while let Ok((stream, _)) = listener.accept().await {
+            log::info!("client connected!");
             let server = srv.clone();
             TcpClient::create(|ctx| {
                 let (r, w) = split(stream);

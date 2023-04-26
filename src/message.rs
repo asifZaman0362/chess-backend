@@ -13,6 +13,8 @@ pub enum ClientMessage {
     LeaveGame,
     PlayAgain,
     MakeMove(MoveDetails),
+    Disconnect,
+    Ping,
 }
 
 #[derive(Serialize)]

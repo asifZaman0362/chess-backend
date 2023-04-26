@@ -43,7 +43,9 @@ impl ChessClient {
     fn handle_message(&mut self, message: &str, ctx: &mut WebsocketContext<Self>) {
         let addr = ctx.address().recipient();
         if let Ok(message) = serde_json::from_str::<ClientMessage>(message) {
+            self.heartbeat = Instant::now();
             match message {
+                ClientMessage::Ping => {}
                 Login(username) => self.server.do_send(Login {
                     username,
                     client: addr,
@@ -62,6 +64,12 @@ impl ChessClient {
                     ),
                 },
                 PlayAgain => {}
+                Disconnect => {
+                    if let Some(username) = self.username.clone() {
+                        self.server.do_send(Logout { username });
+                    }
+                    log::info!("client disconnected!");
+                }
             }
         }
     }
@@ -151,14 +159,15 @@ impl TcpClient {
     }
     fn hb(&self, ctx: &mut <Self as Actor>::Context) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
+            log::info!("Checking heartbeat");
             if Instant::now().duration_since(act.heartbeat) > HEARTBEAT_TIMEOUT {
                 if act.username.is_some() {
                     let username = act.username.clone().unwrap();
-                    info!("Client {username} timeout! Disconnecting!");
+                    log::info!("Client {username} timeout! Disconnecting!");
                     act.server.do_send(Logout { username });
                     ctx.stop();
                 } else {
-                    info!("Client timeout! Disconnecting!");
+                    log::info!("Client timeout! Disconnecting!");
                     ctx.stop();
                 }
             }
@@ -167,7 +176,9 @@ impl TcpClient {
 
     fn handle_message(&mut self, message: ClientMessage, ctx: &mut <Self as Actor>::Context) {
         let addr = ctx.address().recipient();
+        self.heartbeat = Instant::now();
         match message {
+            ClientMessage::Ping => {}
             Login(username) => self.server.do_send(Login {
                 username,
                 client: addr,
@@ -193,6 +204,12 @@ impl TcpClient {
                 ))),
             },
             PlayAgain => {}
+            Disconnect => {
+                if let Some(username) = self.username.clone() {
+                    self.server.do_send(Logout { username });
+                }
+                log::info!("client disconnected!");
+            }
         }
     }
 }
