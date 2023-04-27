@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     chessclient::Message,
     game::Game,
-    message::{Login, Logout},
+    message::{ClientResult, Login, Logout, OutgoingMessage},
 };
 
 pub struct Server {
@@ -26,14 +26,16 @@ impl Actor for Server {
 }
 
 impl Handler<Login> for Server {
-    type Result = Result<(), ()>;
+    type Result = ();
     fn handle(&mut self, msg: Login, _ctx: &mut Self::Context) -> Self::Result {
-        if self.users.get(&msg.username).is_some() {
-            Err(())
-        } else {
-            self.users.insert(msg.username, msg.client);
-            Ok(())
-        }
+        let res = Message {
+            inner: match self.users.get(&msg.username) {
+                Some(_) => OutgoingMessage::Result(ClientResult::LoginError),
+                None => OutgoingMessage::Result(ClientResult::Ok),
+            },
+            game: None,
+        };
+        msg.client.do_send(res);
     }
 }
 

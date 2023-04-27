@@ -1,12 +1,12 @@
 use std::time::{Duration, Instant};
 
 use crate::codec::{FrameCodec, FrameError};
-use crate::game::{ForfeitGame, Game, MakeMove, MoveError};
-use crate::message::OutgoingMessage;
+use crate::game::{ForfeitGame, Game, MakeMove};
 use crate::message::{
     ClientMessage::{self, *},
     Login, Logout,
 };
+use crate::message::{ClientResult, OutgoingMessage};
 use crate::server::{CancelSearch, FindGame, Server};
 use actix::io::{FramedWrite, WriteHandler};
 use actix::{
@@ -59,8 +59,10 @@ impl ChessClient {
                         player: addr,
                     }),
                     None => ctx.text(
-                        to_string(&Err::<(), MoveError>(crate::game::MoveError::NotInGame))
-                            .unwrap(),
+                        to_string(&crate::message::OutgoingMessage::Result(
+                            ClientResult::MoveError(crate::game::MoveError::NotInGame),
+                        ))
+                        .unwrap(),
                     ),
                 },
                 PlayAgain => {}
@@ -179,10 +181,14 @@ impl TcpClient {
         self.heartbeat = Instant::now();
         match message {
             ClientMessage::Ping => {}
-            Login(username) => self.server.do_send(Login {
-                username,
-                client: addr,
-            }),
+            Login(username) => {
+                let user = username.clone();
+                self.server.do_send(Login {
+                    username,
+                    client: addr,
+                });
+                log::info!("logged in: {user}");
+            }
             Enqueue => {
                 self.server.do_send(FindGame(addr));
             }
@@ -199,9 +205,9 @@ impl TcpClient {
                     move_details,
                     player: addr,
                 }),
-                None => self.framed.write(OutgoingMessage::Result(Err(
-                    crate::game::MoveError::NotInGame,
-                ))),
+                None => self.framed.write(OutgoingMessage::Result(
+                    crate::message::ClientResult::MoveError(crate::game::MoveError::NotInGame),
+                )),
             },
             PlayAgain => {}
             Disconnect => {
@@ -245,7 +251,7 @@ impl Handler<Message> for ChessClient {
             }
             _ => (),
         }
-        ctx.text(to_string(&msg.inner).unwrap());
+        ctx.text(to_string(&msg.inner).unwrap() + "\n");
     }
 }
 

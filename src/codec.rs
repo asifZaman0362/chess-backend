@@ -20,7 +20,8 @@ pub struct FrameCodec;
 impl Encoder<OutgoingMessage> for FrameCodec {
     type Error = FrameError;
     fn encode(&mut self, item: OutgoingMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let str = to_string(&item).unwrap();
+        let str = to_string(&item).unwrap() + "\n";
+        println!("{str}");
         dst.put_slice(&str.as_bytes());
         Ok(())
     }
