@@ -142,6 +142,7 @@ impl Game {
                         if self.check_move_pattern(piece, from, to) {
                             self.take_piece_if_exists((self.turn + 1) % 2, to_projected_pos);
                             self.move_piece(self.turn, from, to);
+                            self.turn = (self.turn + 1) % 2;
                             Ok(())
                         } else {
                             Err(MoveError::InvalidPosition)
