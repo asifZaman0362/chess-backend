@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     chessclient::Message,
     game::Game,
-    message::{ClientResult, Login, Logout, OutgoingMessage},
+    message::{ClientResult, Disconnect, Login, Logout, OutgoingMessage},
 };
 
 pub struct Server {
@@ -46,6 +46,15 @@ impl Handler<Logout> for Server {
     }
 }
 
+impl Handler<Disconnect> for Server {
+    type Result = ();
+    fn handle(&mut self, msg: Disconnect, ctx: &mut Self::Context) -> Self::Result {
+        if Some(msg.player) == self.waiting_for_game {
+            self.waiting_for_game = None;
+        }
+    }
+}
+
 #[derive(ActixMessage)]
 #[rtype(result = "Vec<String>")]
 pub struct GetPlayers {}
@@ -69,15 +78,22 @@ impl Handler<FindGame> for Server {
     type Result = ();
     fn handle(&mut self, msg: FindGame, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(other) = &self.waiting_for_game {
-            let game = Game::new([other.clone(), msg.0.clone()]).start();
-            other.do_send(Message {
-                inner: crate::message::OutgoingMessage::GameStarted,
-                game: Some(game.clone()),
-            });
-            msg.0.do_send(Message {
-                inner: crate::message::OutgoingMessage::GameStarted,
-                game: Some(game),
-            });
+            if other != &msg.0.clone() {
+                let game = Game::new([other.clone(), msg.0.clone()]).start();
+                other.do_send(Message {
+                    inner: crate::message::OutgoingMessage::GameStarted(
+                        crate::message::Color::White,
+                    ),
+                    game: Some(game.clone()),
+                });
+                msg.0.do_send(Message {
+                    inner: crate::message::OutgoingMessage::GameStarted(
+                        crate::message::Color::Black,
+                    ),
+                    game: Some(game),
+                });
+                self.waiting_for_game = None;
+            }
         } else {
             self.waiting_for_game = Some(msg.0);
         }

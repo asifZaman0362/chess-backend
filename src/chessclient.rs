@@ -6,7 +6,7 @@ use crate::message::{
     ClientMessage::{self, *},
     Login, Logout,
 };
-use crate::message::{ClientResult, OutgoingMessage};
+use crate::message::{ClientResult, Disconnect, OutgoingMessage};
 use crate::server::{CancelSearch, FindGame, Server};
 use actix::io::{FramedWrite, WriteHandler};
 use actix::{
@@ -67,6 +67,7 @@ impl ChessClient {
                 },
                 PlayAgain => {}
                 Disconnect => {
+                    self.server.do_send(Disconnect { player: addr });
                     if let Some(username) = self.username.clone() {
                         self.server.do_send(Logout { username });
                     }
@@ -211,6 +212,7 @@ impl TcpClient {
             },
             PlayAgain => {}
             Disconnect => {
+                self.server.do_send(Disconnect { player: addr });
                 if let Some(username) = self.username.clone() {
                     self.server.do_send(Logout { username });
                 }
@@ -240,7 +242,7 @@ impl Handler<Message> for ChessClient {
     type Result = ();
     fn handle(&mut self, msg: Message, ctx: &mut Self::Context) -> Self::Result {
         match msg.inner {
-            OutgoingMessage::GameStarted => {
+            OutgoingMessage::GameStarted(color) => {
                 self.game = msg.game;
             }
             OutgoingMessage::WinGame(_) => {

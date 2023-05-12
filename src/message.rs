@@ -5,6 +5,12 @@ use crate::{
 use actix::{Message as ActixMessage, Recipient};
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Clone, Copy)]
+pub enum Color {
+    White,
+    Black,
+}
+
 #[derive(Serialize)]
 pub enum ClientResult {
     Ok,
@@ -31,7 +37,7 @@ pub enum OutgoingMessage {
     Check { checker: usize },
     Checkmate { winner: usize },
     Result(ClientResult),
-    GameStarted,
+    GameStarted(Color),
     WinGame(String),
     LoseGame(String),
 }
@@ -47,4 +53,10 @@ pub struct Login {
 #[rtype(result = "()")]
 pub struct Logout {
     pub username: String,
+}
+
+#[derive(ActixMessage)]
+#[rtype(result = "()")]
+pub struct Disconnect {
+    pub player: Recipient<Message>,
 }
