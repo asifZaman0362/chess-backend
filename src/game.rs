@@ -217,8 +217,14 @@ impl Handler<MakeMove> for Game {
                         msg.move_details.from,
                         msg.move_details.to,
                     ) {
-                        Ok(()) => Ok(()),
-                        Err(err) => Err(to_string(&err).unwrap()),
+                        Ok(()) => {
+                            log::debug!("Moved");
+                            return Ok(());
+                        }
+                        Err(err) => {
+                            log::error!("error {}", to_string(&err).unwrap());
+                            return Err(to_string(&err).unwrap());
+                        }
                     }
                 } else {
                     Err(to_string(&MoveError::InvalidTurn).unwrap())
